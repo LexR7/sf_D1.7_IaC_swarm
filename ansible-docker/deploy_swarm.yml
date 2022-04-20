@@ -1,0 +1,67 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+  - name: Install dependencies
+    apt:
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+      - python3-pip
+
+  - name: Install docker python package
+    pip:
+      name: "{{ packages }}"
+    vars:
+      packages:
+      - docker
+      - jsondiff
+      - docker-compose
+
+- hosts: manager
+  tasks:
+  - name: Reset ssh connection to allow user changes to affect 'current login user'
+    meta: reset_connection
+
+  - name: Init a new swarm
+    community.docker.docker_swarm:
+      state: present
+      advertise_addr: "{{ internal_ip }}"
+    register: result
+
+- hosts: worker
+  tasks:
+  - name: Reset ssh connection to allow user changes to affect 'current login user'
+    meta: reset_connection
+
+  - name: Get join-token for worker nodes
+    set_fact:
+      join_token_worker: "{{ hostvars['manager-1'].result.swarm_facts.JoinTokens.Worker }}"
+
+#  - name: show worker token
+#    ansible.builtin.debug:
+#      msg: "{{ join_token_worker }}"
+
+  - name: Add nodes
+    community.docker.docker_swarm:
+      state: join
+      advertise_addr: "{{ internal_ip }}"
+      join_token: "{{ join_token_worker }}"
+      remote_addrs: "{{ hostvars['manager-1']['internal_ip'] }}"
+
+- hosts: manager
+  tasks:
+  - name: Deploy stack from a compose file
+    docker_stack:
+      state: present
+      name: sfdemo
+      compose:
+        - ~/docker_swarm/docker-compose.yml
+
+#  - name: Scale the sfdemo_front-end service to 2
+#    community.docker.docker_compose:
+#        project_src: ~/docker_swarm
+#        scale:
+#          sfdemo_front-end: 2

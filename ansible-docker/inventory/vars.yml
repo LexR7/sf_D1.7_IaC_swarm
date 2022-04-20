@@ -1,0 +1,4 @@
+[all:vars]
+ansible_user=ansible
+docker_compose_version=v2.2.3
+manager=1
